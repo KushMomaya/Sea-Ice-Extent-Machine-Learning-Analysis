@@ -27,7 +27,7 @@ disagree, and diverge from reality.
 
 - `sic` — sea ice concentration
 - `sit` — sea ice thickness
-- `grFrazil`, `strairx`, `strairy`, `streng` — process/thermodynamic variables (GFDL models)
+- `grFrazil`, `pr`, `prsn`, `snoToIce`, `strairx`, `strairy`, `streng` — process/thermodynamic variables (GFDL models)
 - `ialb`, `sim`, `tsice`, `transix`, `transiy` — process variables (CMCC-CESM)
 - `areacello`, `deptho`, `sftof` — fixed grid metadata (needed for area-weighted extent)
 
@@ -47,7 +47,7 @@ model.py            Full pipeline: load -> explore -> preprocess -> feature engi
 Data files are not committed to this repo (too large for git). To regenerate:
 
 In data_load.py, change TARGET_VARS to select which variables you would like to download (to split the download into smaller chunks), then change 
-CACHE_DIR to the folder you want to store the .nc variable files.
+CACHE_DIR and DEFAULT_SH_FILE to the folder you want to store the .nc variable files.
 
 Downloaded files should be organized as described in `model.py`'s config
 (model / experiment / variable folder structure).
@@ -61,3 +61,12 @@ Downloaded files should be organized as described in `model.py`'s config
 - [ ] Observational (NSIDC) comparison data
 - [ ] Area-weighted extent calculation using `areacello`
 - [ ] Model-vs-observation error/residual as ML target
+
+- [X] GDFL_CM3 piControl
+- [X] GDFL_CM3 areacello
+- [] GDFL_CM3 historical
+- [] GDFL_ESM2M piControl
+- [] GDFL_ESM2M areacello
+- [] GDFL_ESM2M historical
+- [] CMCC_CESM piControl
+- [] CMCC_CESM historical

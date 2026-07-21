@@ -24,7 +24,7 @@ def extract_download_block(sh_file):
     return block
 
 
-TARGET_VARS = {"grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"}
+TARGET_VARS = {"areacello", "deptho", "gridspec", "sftof"}
 
 def parse_block(block):
     data = []
@@ -66,7 +66,9 @@ def group_by_var(data):
 
 
 # Modify Cache for different models
-CACHE_DIR = "cmip_cache"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CACHE_DIR = os.path.join(BASE_DIR, "data", "GDFL_CM3", "piControl", "fx")
+DEFAULT_SH_FILE = os.path.join(BASE_DIR, "data_bashes", "piControl", "areacello_cm3.sh")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 def download_file(url, filename):
@@ -114,6 +116,11 @@ def build_dataset(local_files):
     return datasets
 
 def load_cmip_from_sh(sh_file):
+    sh_file = os.path.abspath(sh_file)
+
+    if not os.path.exists(sh_file):
+        raise FileNotFoundError(f"Could not find download script: {sh_file}")
+
     # 1. extract heredoc block
     block = extract_download_block(sh_file)
 
@@ -131,9 +138,5 @@ def load_cmip_from_sh(sh_file):
 
     return datasets
 
-datasets = load_cmip_from_sh("wget_script_2026-4-29_15-47-3.sh")
-
-sic = datasets["sic"]["sic"]
-sit = datasets["sit"]["sit"]
-
-print(sic)
+if __name__ == "__main__":
+    datasets = load_cmip_from_sh(DEFAULT_SH_FILE)
