@@ -64,9 +64,9 @@ Downloaded files should be organized as described in `model.py`'s config
 
 - [X] GDFL_CM3 piControl
 - [X] GDFL_CM3 areacello
-- [] GDFL_CM3 historical
-- [] GDFL_ESM2M piControl
-- [] GDFL_ESM2M areacello
-- [] GDFL_ESM2M historical
+- [X] GDFL_CM3 historical
+- [] GDFL_ESM2M piControl - stuck at snd connection time out
+- [X] GDFL_ESM2M areacello
+- [] GDFL_ESM2M historical - connection time out
 - [] CMCC_CESM piControl
 - [] CMCC_CESM historical
