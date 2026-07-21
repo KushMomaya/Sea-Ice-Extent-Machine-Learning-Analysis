@@ -1,0 +1,6 @@
+# Data files -- these are large (GB+) and should NOT be committed.
+*.nc
+data/
+data_bashes/*/**/*.nc
+observational/
+images/
