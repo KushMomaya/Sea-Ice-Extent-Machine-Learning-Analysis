@@ -18,6 +18,10 @@ MODEL_VARS = {
 
 FX_VARS = ["areacello", "deptho", "sftof"]
 
+OBS_ROOT = "observations/nsidc"
+OBS_EXTENT_CSV = os.path.join(OBS_ROOT, "sea_ice_extent_monthly.csv")
+OBS_CONC_DIR = os.path.join(OBS_ROOT, "concentration")  # gridded .nc files, if downloaded
+
 TARGET_VAR = "sic"
 
 
@@ -106,64 +110,3 @@ def load_all_data():
 # Data Visualization - EDA Process to lead into feature engineering
 # ====================================================================
 
-def plot_spatial_snapshot(da, time_index=0, title=None):
-    """Single map of a variable at one time step -- sanity-checks the grid."""
-    fig, ax = plt.subplots(figsize=(7, 5))
-    da.isel(time=time_index).plot(ax=ax)
-    ax.set_title(title or f"{da.name} at t={time_index}")
-    plt.tight_layout()
-    plt.show()
- 
- 
-def plot_time_series(da, reduce_dims=("y", "x"), title=None, label=None):
-    """Spatially-averaged time series -- spot trends, gaps, spikes."""
-    present_dims = [d for d in reduce_dims if d in da.dims]
-    series = da.mean(dim=present_dims)
-    series.plot(label=label)
-    plt.title(title or f"{da.name} spatial mean over time")
-    plt.xlabel("time")
-    plt.ylabel(da.name)
-    if label:
-        plt.legend()
- 
- 
-def plot_seasonal_cycle(da, reduce_dims=("y", "x"), title=None, label=None):
-    """Climatological seasonal cycle -- sea ice is strongly seasonal."""
-    present_dims = [d for d in reduce_dims if d in da.dims]
-    spatial_mean = da.mean(dim=present_dims)
-    monthly = spatial_mean.groupby("time.month").mean("time")
-    monthly.plot(label=label, marker="o")
-    plt.title(title or f"{da.name} seasonal cycle")
-    plt.xlabel("month")
-    plt.ylabel(da.name)
-    if label:
-        plt.legend()
- 
- 
-def plot_multi_model_comparison(data, var, plot_fn=plot_time_series, experiment="piControl"):
-    """
-    Overlay the same plot (time series or seasonal cycle) across all
-    loaded models, for a shared variable, so you can see where models
-    agree/disagree.
-    """
-    plt.figure(figsize=(9, 5))
-    for model in MODELS:
-        ds = data.get(model, {}).get(experiment)
-        if ds is None or var not in ds:
-            continue
-        plot_fn(ds[var], label=model, title=f"{var} ({experiment}) across models")
-    plt.tight_layout()
-    plt.show()
- 
- 
-def run_exploratory_plots(data, fx=None):
-    """Standard EDA plot set across all loaded models."""
-    for model in MODELS:
-        ds = data.get(model, {}).get("piControl")
-        if ds is None:
-            continue
-        if TARGET_VAR in ds:
-            plot_spatial_snapshot(ds[TARGET_VAR], title=f"{model} {TARGET_VAR} snapshot")
- 
-    plot_multi_model_comparison(data, TARGET_VAR, plot_fn=plot_time_series)
-    plot_multi_model_comparison(data, TARGET_VAR, plot_fn=plot_seasonal_cycle)
