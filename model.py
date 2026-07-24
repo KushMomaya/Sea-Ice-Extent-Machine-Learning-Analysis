@@ -11,8 +11,8 @@ MODELS = ["GFDL-CM3", "GFDL-ESM2M", "CMCC-CESM"]
 EXPERIMENTS = ["piControl", "historical"]
 
 MODEL_VARS = {
-    "GFDL-CM3":   ["sic", "sit", "grFrazil", "strairx", "strairy", "streng"],
-    "GFDL-ESM2M": ["sic", "sit", "grFrazil", "strairx", "strairy", "streng"],
+    "GFDL-CM3":   ["sic", "sit", "grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"],
+    "GFDL-ESM2M": ["sic", "sit", "grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"],
     "CMCC-CESM":  ["sic", "sit", "ialb", "sim", "tsice", "transix", "transiy"],
 }
 

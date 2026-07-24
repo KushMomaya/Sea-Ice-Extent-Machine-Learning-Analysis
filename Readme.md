@@ -64,7 +64,7 @@ Downloaded files should be organized as described in `model.py`'s config
 
 - [X] GDFL_CM3 piControl
 - [X] GDFL_CM3 areacello
-- [] GDFL_CM3 historical
+- [X] GDFL_CM3 historical
 - [X] GDFL_ESM2M piControl 
 - [X] GDFL_ESM2M areacello
 - [] GDFL_ESM2M historical
