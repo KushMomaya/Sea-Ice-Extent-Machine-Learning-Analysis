@@ -24,7 +24,7 @@ def extract_download_block(sh_file):
     return block
 
 
-TARGET_VARS = {"snoToIce", "strairx", "strairy", "streng"}
+TARGET_VARS = {""}
 
 def parse_block(block):
     data = []
@@ -67,9 +67,8 @@ def group_by_var(data):
 
 # Modify Cache for different models
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, "data", "GFDL_ESM2M", "historical")
-DEFAULT_SH_FILE = os.path.join(BASE_DIR, "data_bashes", "historical", "GFDL-ESM2M-hist.sh")
-os.makedirs(CACHE_DIR, exist_ok=True)
+CACHE_DIR = os.path.join(BASE_DIR, "data", "", "")
+DEFAULT_SH_FILE = os.path.join(BASE_DIR, "data_bashes", "", "")
 
 def download_file(url, filename):
     path = os.path.join(CACHE_DIR, filename)
