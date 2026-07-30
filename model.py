@@ -51,6 +51,29 @@ def load_variable(files):
         return None
     return xr.open_mfdataset(files, combine="by_coords", chunks={"time": 12})
     
+def merge_model_experiment(model, experiment):
+    """
+    Concatenate all loaded variables corresponding to a specified model and experiment into 
+    one single dataset. 
+    """
+    variables = MODEL_VARS.get(model)
+    if not variables:
+        print(f"[!] no configured variables for {model}/{experiment}")
+        return None
+    
+    var_datasets = []
+    for var in variables:
+        files = file_validation(model, experiment, var)
+        ds = load_variable(files)
+        if ds is not None:
+            var_datasets.append(ds)
+    
+    if not var_datasets:
+        return None
+    
+    merged = xr.merge(var_datasets, compat="override", join="inner")
+    return merged
+
 
 # ====================================================================
 # Data Visualization - EDA Process to lead into feature engineering
