@@ -62,11 +62,8 @@ Downloaded files should be organized as described in `model.py`'s config
 - [ ] Area-weighted extent calculation using `areacello`
 - [ ] Model-vs-observation error/residual as ML target
 
-- [X] GDFL_CM3 piControl
-- [X] GDFL_CM3 areacello
-- [X] GDFL_CM3 historical
-- [X] GDFL_ESM2M piControl 
-- [X] GDFL_ESM2M areacello
-- [X] GDFL_ESM2M historical
-- [X] CMCC_CESM piControl
-- [X] CMCC_CESM historical
+## Citations
+
+Observational Sea Ice Data:
+
+Fetterer, F., Knowles, K., Meier, W. N., Savoie, M., Windnagel, A. K. & Stafford, T. (2025). Sea Ice Index. (G02135, Version 4). [Data Set]. Boulder, Colorado USA. National Snow and Ice Data Center. https://doi.org/10.7265/a98x-0f50. [describe subset used if applicable]. Date Accessed 07-30-2026.

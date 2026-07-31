@@ -16,12 +16,14 @@ MODEL_VARS = {
     "CMCC-CESM":  ["sic", "sit", "ialb", "sim", "tsice", "transix", "transiy"],
 }
 
-FX_VARS = ["areacello", "deptho", "sftof", "gridspec"]
+FX_VARS = ["areacello", "deptho", "sftof"]
 
-OBS_ROOT = "observational/nsidc"
-OBS_EXTENT_CSV = os.path.join(OBS_ROOT, "Sea_Ice_Index_Monthly_Data_with_Statistics_G02135_v4.0.xlsx")
+OBS_ROOT = "observational"
+OBS_EXTENT_XLSX = os.path.join(OBS_ROOT, "extent", "Sea_Ice_Index_Monthly_Data_with_Statistics_G02135_v4.0.xlsx")
+OBS_CONC = os.path.join(OBS_ROOT, "concentration")
+
 TARGET_VAR = "sic"
-
+BIAS_VAR = "sic_bias"
 
 # ========================================================================
 # Data Loading - Retrieving the data from /data into usable datasets
@@ -74,7 +76,55 @@ def merge_model_experiment(model, experiment):
     merged = xr.merge(var_datasets, compat="override", join="inner")
     return merged
 
+def load_fx(model):
+    """
+    Loads the fixed grid metadata variables (areacello, deptho, sftof).
+    Used in both piControl and historical experiments because the grid of the model 
+    stays the same between experiments.
+    """
+    fx_datasets = []
+    for fx in FX_VARS:
+        pattern = os.path.join(DATA_ROOT, model, "fx", f"{fx}_*.nc")
+        files = sorted(glob.glob(pattern))
+        if not files:
+            print(f"[!] No fx file found for {model}/{fx} ({pattern})")
+        else:
+            fx_datasets.append(xr.open_dataset(files[0]))
+    
+    if not fx_datasets:
+        return None
+    
+    return xr.merge(fx_datasets, compat="override", join="inner")
 
+def load_all_data():
+    """
+    Loads all experiment/model/variables into a nested dictionary:
+        data[model][experiment] -> xr.dataset
+        fx[model] -> xr.dataset
+        
+        Returns data, fx to be used for the rest of the model building process.
+    """
+    data = {}
+    fx = {}
+    
+    for model in MODELS:
+        print(f"\n=== {model} ===")
+        fx[model] = load_fx(model)
+        
+        data[model] = {}
+        for experiment in EXPERIMENTS:
+            print(f"Loading {model}/{experiment}: ")
+            ds = merge_model_experiment(model, experiment)
+            if ds is not None:
+                data[model][experiment] = ds
+    
+    return data, fx
+
+def load_obs_extent(xlsx_path=OBS_EXTENT_XLSX, sheet_name="Data"):
+    """
+    
+    """
+    
 # ====================================================================
 # Data Visualization - EDA Process to lead into feature engineering
 # ====================================================================
