@@ -1,12 +1,12 @@
 # Sea Ice Concentration/Thickness ML Diagnostics
 
 Investigating why coupled climate models (CMIP5) underestimate the observed
-decline in Arctic sea ice, using ML on model output to identify where and
+decline in Antarctic sea ice, using ML on model output to identify where and
 when model-observation errors are largest.
 
 ## Background
 
-CMIP models have historically underestimated the rate of observed Arctic
+CMIP models have historically underestimated the rate of observed Antarctic
 sea ice loss. Proposed explanations include missing ice-sensitivity
 feedbacks and unrepresented natural variability. This project compares
 multiple CMIP5 models' sea ice output against each other (and eventually
