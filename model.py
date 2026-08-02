@@ -202,7 +202,40 @@ def compute_extent_bias(aligned_df, model_col="model_extent", obs_col="obs_exten
     positive bias = model overestimates real extent.
     """
     aligned_df = aligned_df.copy()
+    aligned_df[BIAS_VAR] = aligned_df[model_col] - aligned_df[obs_col]
+    aligned_df[f"{BIAS_VAR}_pct"] = 100 * aligned_df[BIAS_VAR] / aligned_df[obs_col]
     
+    monthly_bias = (
+        aligned_df.assign(month=pd.to_datetime(aligned_df["time"]).dt.month)
+        .groupby("month")["BIAS_VAR"]
+        .agg(["mean", "std"])
+        .rename(columns={"mean": "mean_bias", "std": "std_bias"})
+    )
+    print("\n Mean Bias by calendar month (model - obs, Mkm^2)")
+    print(monthly_bias)
+    
+    return aligned_df
+
+def plot_extents(aligned_df, model_col="model_extent", obs_col="obs_extent"):
+    """
+    Diagnostic model that plots the model vs observed extent time series.
+    """
+    fig, axes = plt.subplots(2, 1, figsize=(10,7), sharex=True, gridspec_kw={"height_ratios": [2, 1]})
+    
+    axes[0].plot(aligned_df["time"], aligned_df[obs_col], label="NSIDC (observed)", color="black", lw=1.5)
+    axes[0].plot(aligned_df["time"], aligned_df[model_col], label="model", color="red", alpha=0.8)
+    axes[0].set_ylabel("extent(Mkm^2)")
+    axes[0].set_title("Model vs. Observed Sea Ice Extent")
+    axes[0].legend()
+    
+    axes[1].axhline(0, color="grey", lw=0.8)
+    axes[1].plot(aligned_df["time"], aligned_df[BIAS_VAR], color="red")
+    axes[1].fill_between(aligned_df["time"], aligned_df[BIAS_VAR], 0, alpha=0.2, color="red")
+    axes[1].set_ylabel("bias\n(model - obs, Mkm^2)")
+    axes[1].set_xlabel("time")
+    
+    plt.tight_layout()
+    plt.show()
 # ====================================================================
 # Data Visualization - EDA Process to lead into feature engineering
 # ====================================================================
