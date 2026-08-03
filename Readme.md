@@ -52,15 +52,7 @@ CACHE_DIR and DEFAULT_SH_FILE to the folder you want to store the .nc variable f
 Downloaded files should be organized as described in `model.py`'s config
 (model / experiment / variable folder structure).
 
-## Status
 
-- [x] Data loader for local .nc files (`data_load.py`)
-- [x] Pipeline scaffold with exploratory visualization, preprocessing,
-      feature engineering, modeling, and evaluation stages (`model.py`)
-- [ ] Historical run data for all three models
-- [ ] Observational (NSIDC) comparison data
-- [ ] Area-weighted extent calculation using `areacello`
-- [ ] Model-vs-observation error/residual as ML target
 
 ## Citations
 

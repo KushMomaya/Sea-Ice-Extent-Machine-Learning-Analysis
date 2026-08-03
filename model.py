@@ -7,13 +7,13 @@ import glob # Pathname pattern matching
 
 DATA_ROOT = "data"
 
-MODELS = ["GFDL-CM3", "GFDL-ESM2M", "CMCC-CESM"]
+MODELS = ["GFDL_CM3", "GFDL_ESM2M", "CMCC_CESM"]
 EXPERIMENTS = ["piControl", "historical"]
 
 MODEL_VARS = {
-    "GFDL-CM3":   ["sic", "sit", "grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"],
-    "GFDL-ESM2M": ["sic", "sit", "grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"],
-    "CMCC-CESM":  ["sic", "sit", "ialb", "sim", "tsice", "transix", "transiy"],
+    "GFDL_CM3":   ["sic", "sit", "grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"],
+    "GFDL_ESM2M": ["sic", "sit", "grFrazil", "pr", "prsn", "snoToIce", "strairx", "strairy", "streng"],
+    "CMCC_CESM":  ["sic", "sit", "ialb", "sim", "tsice", "transix", "transiy"],
 }
 
 FX_VARS = ["areacello", "deptho", "sftof"]
@@ -58,7 +58,7 @@ def merge_model_experiment(model, experiment):
     Concatenate all loaded variables corresponding to a specified model and experiment into 
     one single dataset. 
     """
-    variables = MODEL_VARS.get(model)
+    variables = MODEL_VARS.get(model, [])
     if not variables:
         print(f"[!] no configured variables for {model}/{experiment}")
         return None
@@ -84,7 +84,7 @@ def load_fx(model):
     """
     fx_datasets = []
     for fx in FX_VARS:
-        pattern = os.path.join(DATA_ROOT, model, "fx", f"{fx}_*.nc")
+        pattern = os.path.join(DATA_ROOT, model, "piControl", "fx", f"{fx}_*.nc")
         files = sorted(glob.glob(pattern))
         if not files:
             print(f"[!] No fx file found for {model}/{fx} ({pattern})")
@@ -147,7 +147,7 @@ def load_obs_extent(xlsx_path=OBS_EXTENT_XLSX):
         return None
     
     df = pd.concat(frames, ignore_index=True)
-    df = df[df["hemisphere"] == S]
+    df = df[df["hemisphere"] == "S"]
     df = df.dropna(subset = ["year", "month", "extent"])
     df["time"] = pd.to_datetime(dict(year = df["year"], month = df["month"], day = 1))
     df = df.sort_values("time").reset_index(drop=True)
@@ -207,7 +207,7 @@ def compute_extent_bias(aligned_df, model_col="model_extent", obs_col="obs_exten
     
     monthly_bias = (
         aligned_df.assign(month=pd.to_datetime(aligned_df["time"]).dt.month)
-        .groupby("month")["BIAS_VAR"]
+        .groupby("month")[BIAS_VAR]
         .agg(["mean", "std"])
         .rename(columns={"mean": "mean_bias", "std": "std_bias"})
     )
@@ -240,3 +240,73 @@ def plot_extents(aligned_df, model_col="model_extent", obs_col="obs_extent"):
 # Data Visualization - EDA Process to lead into feature engineering
 # ====================================================================
 
+def plot_spatial_snapshot(da, time_index=0, title=None):
+    """
+    Map of a single variable at one timestep
+    """
+    fig, ax = plt.subplots(figsize=(7,5))
+    da.isel(time=time_index).plot(ax=ax)
+    ax.set_title(title or f"{da.name} at t={time_index}")
+    
+    plt.tight_layout()
+    plt.show()
+    
+def plot_time_series(da, reduce_dims=("y", "x"), label=None, title=None):
+    """
+    Spatially averaged time series to find gaps or trends in the data
+    """
+    present_dims = [d for d in reduce_dims if d in da.dims]
+    series = da.mean(dim=present_dims)
+    series.plot(label=label)
+    plt.title(title or f"{da.name} spatial mean over time")
+    plt.xlabel("time")
+    plt.ylabel(da.name)
+    if label:
+        plt.legend()
+
+def plot_seasonal_cycle(da, reduce_dims=("y", "x"), label=None, title=None):
+    """
+    Plots the season cycle for sea ice that should show a pattern of peaking in winter
+    and bottoming in summer. 
+    """
+    present_dims = [d for d in reduce_dims if d in da.dims]
+    spatial_mean = da.mean(dim=present_dims)
+    monthly = spatial_mean.groupby("time.month").mean("time")
+    monthly.plot(label=label)
+    plt.title(title or f"{da.name} seasonal cycle")
+    plt.xlabel("month")
+    plt.ylabel(da.name)
+    if label:
+        plt.legend()
+
+def plot_multi_modal_comparison(data, var, plot_fn=plot_time_series, experiment="piControl"):
+    """
+    Overlay the same plot across all loaded models for one variable to view
+    discrepancies between models
+    """
+    plt.figure(figsize=(9,5))
+    for model in MODELS:
+        ds = data.get(model, {}).get(experiment)
+        if ds is None or var not in ds:
+            continue
+        plot_fn(ds[var], label=model, title=f"{var} {experiment} across models")
+    plt.tight_layout()
+    plt.show()
+
+def run_eda_plots(data, fx=None):
+    """
+    Run EDA plots across all models
+    """
+    for model in MODELS:
+        ds = data.get(model, {}).get("piControl")
+        if ds is None:
+            continue
+        if TARGET_VAR in ds:
+            plot_spatial_snapshot(ds[TARGET_VAR], title=f"{model} {TARGET_VAR} snapshot")
+    
+    plot_multi_modal_comparison(data, TARGET_VAR, plot_fn=plot_time_series)
+    plot_multi_modal_comparison(data, TARGET_VAR, plot_fn=plot_seasonal_cycle)
+
+
+data, fx = load_all_data()
+run_eda_plots(data, fx)
