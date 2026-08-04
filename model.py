@@ -236,6 +236,7 @@ def plot_extents(aligned_df, model_col="model_extent", obs_col="obs_extent"):
     
     plt.tight_layout()
     plt.show()
+
 # ====================================================================
 # Data Visualization - EDA Process to lead into feature engineering
 # ====================================================================
@@ -310,3 +311,49 @@ def run_eda_plots(data, fx=None):
 
 data, fx = load_all_data()
 run_eda_plots(data, fx)
+
+# ====================================================================
+# EDA and Summary Statistics
+# ====================================================================
+
+def summarize_dataset(ds, model_name=""):
+    """
+    Print the mean, std, min, max, and NaN% per variable.
+    Notably, the NaN% is not simply missing data,
+    but represented areas where sea ice is physically undefined
+    like land areas.
+    """
+    print(f"{model_name} summary")
+    for var in ds.data_vars:
+        da = ds[var]
+        vals = da.values
+        n_nan = np.isnan(vals).sum()
+        n_total = vals.size
+        print(
+            f"{var:12s} mean={np.nanmean(vals):.3f} std={np.nanstd(vals):.3f} "
+            f"min={np.nanmin(vals):.3f} max={np.nanmax(vals):.3f}"
+            f"nan={100*n_nan/n_total:.1f}"
+        )
+
+def plot_correlation_heatmap(df, title="Variable correlations"):
+    """
+    Correlation matrix across flattened variables. Used to see which
+    variables might be independent or which are redundant.
+    """
+    corr = df.corr()
+    fig, ax = plt.subplots(figsize=(7,6))
+    im = ax.imshow(corr, vmin=1, vmax=1, cmap="coolwarm")
+    ax.set_xticks(range(len(corr.columns)))
+    ax.set_yticks(range(len(corr.columns)))
+    ax.set_xticklabels(corr.colmuns, rotation=45, ha="right")
+    ax.set_yticklabels(corr.columns)
+    fig.colorbar(im, ax=ax, label="correlation")
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.show()
+    return corr
+
+# ====================================================================
+# Feature Engineering
+# ====================================================================
+
