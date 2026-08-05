@@ -25,6 +25,7 @@ OBS_CONC = os.path.join(OBS_ROOT, "concentration")
 TARGET_VAR = "sic"
 BIAS_VAR = "sic_bias"
 
+TIME_CODER = xr.coders.CFDatetimeCoder(use_cftime=True)
 # ========================================================================
 # Data Loading - Retrieving the data from /data into usable datasets
 # ========================================================================
@@ -51,7 +52,7 @@ def load_variable(files):
     """
     if not files:
         return None
-    return xr.open_mfdataset(files, combine="by_coords", chunks={"time": 12})
+    return xr.open_mfdataset(files, combine="by_coords", chunks={"time": 12}, decode_times=TIME_CODER, data_vars="minimal", coords="minimal", compat="override")
     
 def merge_model_experiment(model, experiment):
     """
@@ -89,7 +90,7 @@ def load_fx(model):
         if not files:
             print(f"[!] No fx file found for {model}/{fx} ({pattern})")
         else:
-            fx_datasets.append(xr.open_dataset(files[0]))
+            fx_datasets.append(xr.open_dataset(files[0], decode_times=TIME_CODER))
     
     if not fx_datasets:
         return None
@@ -161,7 +162,7 @@ def load_obs_concentration(obs_dir=OBS_CONC):
     files = sorted(glob.glob(os.path.join(obs_dir, "*.nc")))
     if not files:
         print(f"[!] no observational concentration files found at {obs_dir}")
-    return xr.open_mfdataset(files, combine="by_coords")
+    return xr.open_mfdataset(files, combine="by_coords", decode_times=TIME_CODER, data_vars="minimal", coords="minimal", compat="override")
 
 # ========================================================================================================================================
 # Model vs Observation Bias Setup - Aligning the data from the model to the observational data for direct comparison and bias calculation
@@ -310,7 +311,7 @@ def run_eda_plots(data, fx=None):
 
 
 data, fx = load_all_data()
-run_eda_plots(data, fx)
+#run_eda_plots(data, fx)
 
 # ====================================================================
 # EDA and Summary Statistics
@@ -327,12 +328,15 @@ def summarize_dataset(ds, model_name=""):
     for var in ds.data_vars:
         da = ds[var]
         vals = da.values
+        if not np.issubdtype(vals.dtype, np.number):
+            print(f"{var:12s} dtype={vals.dtype} (non-numeric, skipping statistics)")
+            continue
         n_nan = np.isnan(vals).sum()
         n_total = vals.size
         print(
             f"{var:12s} mean={np.nanmean(vals):.3f} std={np.nanstd(vals):.3f} "
             f"min={np.nanmin(vals):.3f} max={np.nanmax(vals):.3f}"
-            f"nan={100*n_nan/n_total:.1f}"
+            f" nan={100*n_nan/n_total:.1f}"
         )
 
 def plot_correlation_heatmap(df, title="Variable correlations"):
@@ -356,4 +360,57 @@ def plot_correlation_heatmap(df, title="Variable correlations"):
 # ====================================================================
 # Feature Engineering
 # ====================================================================
+
+#ds = data.get("GFDL_CM3", {}).get("piControl")
+#print(list(ds.coords))
+def subset_hemisphere(ds):
+    """
+    return only the data corresponding to the southern hemisphere (latitude below 0/equator)
+    """
+    return ds.where(ds["lat"] < 0, drop=True)
+
+def compute_area_weighted_extent(sic_da, area_da, threshold=0.15):
+    """
+    Standard Sea Ice Extent Calculation: sum grid-cell area where sic >= threshold per timestep.
+    """
+    ice_mask = (sic_da >= threshold).astype(float)
+    extent = (ice_mask * area_da).sum(dim=[d for d in sic_da.dims if d != "time"])
+    return extent
+
+def flatten_to_dataframe(ds, variables=None, model_name=None, experiment=None):
+    """
+    Convert an xr.Dataset variables into a pandas dataframe:
+    One row per (time, spatial cell), one column per variable.
+    """
+    vars = variables or list(ds.data_vars)
+    df = df[variables].to_dataframe().reset_index()
+    df = df.dropna(subset=variables, how="all")
+    if model_name:
+        df["model"] = model_name
+    if experiment:
+        df["experiment"] = experiment
+    return df
+
+def add_temporal_features(df, time_col="time"):
+    """
+    Add seasonal_cycle and related temporal features.
+    Circular month encoding using sin/cos to prevent Jan and Dec
+    from being 11 months apart. 
+    """
+    df = df.copy()
+    dt = pd.to_datetime(df[time_col])
+    df["month_sin"] = np.sin(2 * np.pi * dt.dt.month / 12)
+    df["month_cos"] = np.cos(2 * np.pi * dt.dt.month / 12)
+    df["year"] = dt.dt.year
+    return df
+
+def add_lag_features(df, target_col, group_cols=("lat", "lon"), lag=1):
+    """
+    Add a lagged feature of the target var (sic) as a feature.
+    Used as a persistence baseline for a predictor to beat in terms
+    of accuracy.
+    """
+    df = df.sort_values("time")
+    df[f"{target_col}_lag{lag}"] = df.groupby(list(group_cols))[target_col].shift(lag)
+    return df
 
