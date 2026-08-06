@@ -24,7 +24,7 @@ def extract_download_block(sh_file):
     return block
 
 
-TARGET_VARS = {""}
+TARGET_VARS = {"streng"}
 
 def parse_block(block):
     data = []
@@ -67,8 +67,8 @@ def group_by_var(data):
 
 # Modify Cache for different models
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, "data", "", "")
-DEFAULT_SH_FILE = os.path.join(BASE_DIR, "data_bashes", "", "")
+CACHE_DIR = os.path.join(BASE_DIR, "data", "GFDL_CM3", "historical")
+DEFAULT_SH_FILE = os.path.join(BASE_DIR, "data_bashes", "historical", "GFDL-CM3-hist.sh")
 
 def download_file(url, filename):
     path = os.path.join(CACHE_DIR, filename)

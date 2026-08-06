@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import xarray as xr # Specifally good for working with NetCDF files
 import os
 import glob # Pathname pattern matching
+from sklearn.decomposition import PCA
 
 DATA_ROOT = "data"
 
@@ -309,10 +310,6 @@ def run_eda_plots(data, fx=None):
     plot_multi_modal_comparison(data, TARGET_VAR, plot_fn=plot_time_series)
     plot_multi_modal_comparison(data, TARGET_VAR, plot_fn=plot_seasonal_cycle)
 
-
-data, fx = load_all_data()
-#run_eda_plots(data, fx)
-
 # ====================================================================
 # EDA and Summary Statistics
 # ====================================================================
@@ -358,11 +355,10 @@ def plot_correlation_heatmap(df, title="Variable correlations"):
     return corr
 
 # ====================================================================
-# Feature Engineering
+# Feature Engineering + Dimensionality Reduction
 # ====================================================================
 
-#ds = data.get("GFDL_CM3", {}).get("piControl")
-#print(list(ds.coords))
+
 def subset_hemisphere(ds):
     """
     return only the data corresponding to the southern hemisphere (latitude below 0/equator)
@@ -414,3 +410,84 @@ def add_lag_features(df, target_col, group_cols=("lat", "lon"), lag=1):
     df[f"{target_col}_lag{lag}"] = df.groupby(list(group_cols))[target_col].shift(lag)
     return df
 
+RANDOM_SEED = 42
+np.random.seed(RANDOM_SEED)
+
+def pca_on_field(da, n_components=10):
+    """
+    da: DataArray for one var with dims (time, y, x) for one model (e.g. GFDL_CM3 sic)
+    Reshapes da into a 2D matrix (time, n_cells) for pca. PCA finds the recurring spatial
+    patterns that reconstruct majority of the variability in the full field. Also called
+    Empirical Orthogonal Function Analysis which refers to PCA applied to (time x space)
+    fields. 
+    """
+    stacked = da.stack(cell=[d for d in da.dims if d != "time"])
+    values = stacked.values
+    
+    valid_mask = ~np.isnan(values).any(axis=0)
+    values_valid = values[:, valid_mask]
+    
+    pca = PCA(n_components=n_components, random_state=RANDOM_SEED)
+    pc_scores = pca.fit_transform(values_valid)
+    
+    print(f"Explained variance by component: {pca.explained_variance_ratio_[:5]}")
+    print(f"Cumulative (first in {n_components}): {pca.explained_variance_ratio_.sum():.2%}")
+    
+    return pca, pc_scores, valid_mask, stacked.coords
+
+def plot_explained_variance(pca):
+    """
+    Plot of how much variance each additional component adds.
+    """
+    plt.figure(figsize=(6, 4))
+    plt.plot(np.cumsum(pca.explained_variance_ratio_))
+    plt.xlabel("number of componenets")
+    plt.ylabel("cumulative explained variance")
+    plt.title("PCA explained variance")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+def plot_eof_pattern(pca, component_idx, valid_mask, spatial_shape, title = None):
+    """
+    Reshapes PCA component back onto spatial grid and plots it. 
+    """
+    if component_idx >= pca.n_components_:
+        raise ValueError(
+            f"component_idx={component_idx} out of range, pca was fit with only {pca.n_components_} components"
+        )
+    full_loadings = np.full(valid_mask.shape, np.nan)
+    full_loadings[valid_mask] = pca.components_(component_idx)
+    
+    pattern = xr.DataArray(full_loadings, dims=["cell"], coords={"cell": coords["cell"]})
+    pattern = pattern.unstack("cell")
+ 
+    variance_pct = pca.explained_variance_ratio_[component_idx] * 100
+ 
+    fig, ax = plt.subplots(figsize=(7, 5))
+    pattern.plot(ax=ax, cmap="RdBu_r", center=0)
+    ax.set_title(title or f"EOF {component_idx + 1} ({variance_pct:.1f}% variance explained)")
+    plt.tight_layout()
+    plt.show()
+ 
+    return pattern
+
+# ============================================================
+# 7. TRAIN / VAL / TEST SPLIT
+# ============================================================
+
+
+def main():
+    data, fx = load_all_data()
+    
+    pi_ds = data.get("GFDL_CM3", {}).get("piControl")
+    hist_ds = data.get("GFDL_CM3", {}).get("historical")
+    
+    summarize_dataset(pi_ds, "GFDL_CM3/piControl")
+    summarize_dataset(pi_ds, "GFDL_CM3/historical")
+    
+    print("\nRunning exploratory plots...")
+    run_eda_plots(data, fx)
+    
+    #Bias Calculation: model vs observation comparison for Antarctic/southern hemisphere
+    obs_extent = load_obs_extent()
