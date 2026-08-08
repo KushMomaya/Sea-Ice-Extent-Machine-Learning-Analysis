@@ -448,7 +448,7 @@ def plot_explained_variance(pca):
     plt.tight_layout()
     plt.show()
 
-def plot_eof_pattern(pca, component_idx, valid_mask, spatial_shape, title = None):
+def plot_eof_pattern(pca, component_idx, valid_mask, coords, title = None):
     """
     Reshapes PCA component back onto spatial grid and plots it. 
     """
@@ -473,8 +473,47 @@ def plot_eof_pattern(pca, component_idx, valid_mask, spatial_shape, title = None
     return pattern
 
 # ============================================================
-# 7. TRAIN / VAL / TEST SPLIT
+# TRAIN / VAL / TEST SPLIT
 # ============================================================
+
+def train_test_split(df, val_frac=0.15, test_frac=0.15):
+    """
+    Splits data into a train test validation split. Is NOT random split
+    because the data is structured chronologically. If it was random then
+    the training process could use data from after the test period.
+    """
+    times = np.sort(df["time"].unique())
+    n = len(times)
+    n_test = int(n * test_frac)
+    n_val = int(n * val_frac)
+    
+    train_times = times[:, n - n_val - n_test]
+    val_times = times[n - n_val - n_test: n - n_test]
+    test_times = times[n - n_test:]
+    
+    train_df = df[df["time"].isin(train_times)]
+    val_df = df[df["time"].isin(val_times)]
+    test_df = df[df["time"].isin(test_times)]
+    
+    return train_df, val_df, test_df
+
+# ============================================================
+# Model Definition + Evaluation
+# ============================================================
+
+def climatology_baseline(train_df, test_df, target_col):
+    """
+    Predict test values using the historical mean for that calendar month,
+    computer from train data.
+    """
+    monthly_clim = train_df.groupby("month")[target_col].mean()
+    return test_df["month"].map(monthly_clim)
+
+def build_and_train_mlmodel(x_train, y_train):
+    """
+    
+    """
+
 
 
 def main():
@@ -489,5 +528,20 @@ def main():
     print("\nRunning exploratory plots...")
     run_eda_plots(data, fx)
     
-    #Bias Calculation: model vs observation comparison for Antarctic/southern hemisphere
+    # Bias Calculation: model vs observation comparison for Antarctic/southern hemisphere
+    
     obs_extent = load_obs_extent()
+    
+    sic_south = subset_hemisphere(hist_ds[TARGET_VAR])
+    area_south = subset_hemisphere(fx["GFDL_CM3"]["areacello"])
+    
+    model_extent = compute_area_weighted_extent(sic_south, area_south)
+    aligned = align_model_and_obs_extent(model_extent, obs_extent)
+    aligned = compute_extent_bias(aligned)
+    plot_extents(aligned)
+    
+    hist_south = subset_hemisphere(hist_ds)
+    process_vars = [v for v in MODEL_VARS["GFDL_CM3"] if v != TARGET_VAR]
+    process_df = flatten_to_dataframe(hist_south, "GFDL_CM3", experiment="historical")
+    process_df = process_df.groupby("time")[process_vars].mean().reset_index()
+    

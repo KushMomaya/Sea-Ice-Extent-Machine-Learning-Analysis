@@ -59,3 +59,5 @@ Downloaded files should be organized as described in `model.py`'s config
 Observational Sea Ice Data:
 
 Fetterer, F., Knowles, K., Meier, W. N., Savoie, M., Windnagel, A. K. & Stafford, T. (2025). Sea Ice Index. (G02135, Version 4). [Data Set]. Boulder, Colorado USA. National Snow and Ice Data Center. https://doi.org/10.7265/a98x-0f50. [describe subset used if applicable]. Date Accessed 07-30-2026.
+
+## 
