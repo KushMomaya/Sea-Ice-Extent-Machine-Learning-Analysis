@@ -1,10 +1,17 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import xarray as xr # Specifally good for working with NetCDF files
+import xarray as xr # Specifically good for working with NetCDF files
 import os
 import glob # Pathname pattern matching
 from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import ElasticNet
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import xgboost as xgb
+import shap
 
 DATA_ROOT = "data"
 
@@ -509,10 +516,20 @@ def climatology_baseline(train_df, test_df, target_col):
     monthly_clim = train_df.groupby("month")[target_col].mean()
     return test_df["month"].map(monthly_clim)
 
-def build_and_train_mlmodel(x_train, y_train):
+def select_ml_model(model_type="gradient_boosting", **kwargs):
     """
+    Returns an untrained machine learning model form three options.
     
+    elastic_net: for explaining bias with the process variables beacuse the dataset is small,
+    and the goal is direction and interpretability. Specifically wants signed coefficients and the combination
+    of L1 (for correlated vars) and L2 (stable coeefs) regularization.
+    
+    gradient_boosting: standard for high volume prediction accuracy focus. 
+    
+    random_forest: standard model, used mainly to see if boosting provides meaningful improvement
     """
+    if model_type == "elastic_net":
+        
 
 
 
