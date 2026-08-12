@@ -365,7 +365,6 @@ def plot_correlation_heatmap(df, title="Variable correlations"):
 # Feature Engineering + Dimensionality Reduction
 # ====================================================================
 
-
 def subset_hemisphere(ds):
     """
     return only the data corresponding to the southern hemisphere (latitude below 0/equator)
@@ -380,13 +379,30 @@ def compute_area_weighted_extent(sic_da, area_da, threshold=0.15):
     extent = (ice_mask * area_da).sum(dim=[d for d in sic_da.dims if d != "time"])
     return extent
 
-def flatten_to_dataframe(ds, variables=None, model_name=None, experiment=None):
+def flatten_to_dataframe(ds, variables=None, model_name=None, experiment=None, spatial_stride=1):
     """
     Convert an xr.Dataset variables into a pandas dataframe:
     One row per (time, spatial cell), one column per variable.
     """
-    vars = variables or list(ds.data_vars)
-    df = df[variables].to_dataframe().reset_index()
+    variables = variables or list(ds.data_vars)
+    
+    if TARGET_VAR in ds:
+        primary_dims = set(ds[TARGET_VAR].dims)
+        safe_vars = [v for v in variables if set(ds[v].dims) <= primary_dims]
+        dropped = set(variables) - set(safe_vars)
+        if dropped:
+            print(f"  [!] flatten_to_dataframe: dropping {dropped} -- dims don't "
+                  f"match {TARGET_VAR}'s {primary_dims} (likely bounds/bookkeeping "
+                  f"variables; including them would multiply row count, not add columns)")
+        variables = safe_vars
+    
+    if spatial_stride > 1:
+        spatial_dims = [d for d in ds[variables[0]].dims if d != "time"]
+        ds = ds.isel({d: slice(None, None, spatial_stride) for d in spatial_dims})
+        print(f"  [i] flatten_to_dataframe: spatial_stride={spatial_stride} "
+              f"(keeping 1/{spatial_stride**len(spatial_dims)} of grid cells)")
+ 
+    df = ds[variables].to_dataframe().reset_index()
     df = df.dropna(subset=variables, how="all")
     if model_name:
         df["model"] = model_name
@@ -505,7 +521,7 @@ def train_test_split(df, val_frac=0.15, test_frac=0.15):
     return train_df, val_df, test_df
 
 # ============================================================
-# Model Definition + Evaluation
+# Model Definition + Training
 # ============================================================
 
 def climatology_baseline(train_df, test_df, target_col):
@@ -529,28 +545,274 @@ def select_ml_model(model_type="gradient_boosting", **kwargs):
     random_forest: standard model, used mainly to see if boosting provides meaningful improvement
     """
     if model_type == "elastic_net":
-        
+        return make_pipeline(
+            StandardScaler(),
+            ElasticNet(
+                alpha=kwargs.get("alpha", 0.1),
+                l1_ratio=kwargs.get("l1_ratio", 0.5),
+                random_state=RANDOM_SEED,
+                max_iter=10000,
+                ),
+            )
 
+    if model_type == "gradient_boosting":
+        return xgb.XGBRegressor(
+            n_estimators=300,
+            max_depth=4,
+            learning_rate=0.05,
+            random_state=RANDOM_SEED,
+            n_jobs=-1,
+        )
+    
+    if model_type == "random_forest":
+        return RandomForestRegressor(
+            n_estimators=200,
+            max_depth=None,
+            random_state=RANDOM_SEED,
+            n_jobs=-1,
+        )
+    
+    raise ValueError(f"Unknown model type: {model_type}")
 
+def train_model(model, X_train, y_train):
+    """
+    Fit the model
+    """
+    model.fit(X_train, y_train)
+    return model
 
-def main():
+# ============================================================
+# Model Evaluation
+# ============================================================
+
+def evaluate_predictions(y_true, y_pred, label="model"):
+    """
+    Returns:
+    RMSE: penalizes large errors more due to squaring, sensitive to outliers
+    MAE: handles outliers, easy to interpret, treats all errors linearly
+    R^2: fraction of explained variance, allows for comparison across scales
+    """
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    print(f"{label:12s}  RMSE = {rmse:.4f}  MAE = {mae:.4f}   R2 = {r2:.4f}")
+    return {"rmse": rmse, "mae": mae, "r2": r2}
+
+def plot_pred_vs_actual(y_true, y_pred, title="Predictions vs Actual"):
+    """
+    Scatter plot of predicted vs actual y with a y=x reference line
+    """
+    plt.figure(figsize=(6,6))
+    plt.scatter(y_true, y_pred, alpha=0.1, s=5)
+    lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
+    plt.plot(lims, lims, "r--", label="y=x")
+    plt.xlabel("actual")
+    plt.ylabel("predicted")
+    plt.title(title)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_feature_importance(model, feature_names, title="Feature Importance"):
+    """
+    Plot uses .feature_importances_ returned by tree models (XGB, random_forest).
+    """
+    importances = model.feature_importances_
+    order = np.argsort(importances)[::-1]
+    plt.figure(figsize=(7,4))
+    plt.bar(range(len(order)), importances[order])
+    plt.xticks(range(len(order)), [feature_names[i] for i in order], rotation=45, ha="right")
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+def plot_coefs(pipeline, feature_names, title="ElasticNet coefficients"):
+    """
+    Shows feature importance for the ElasticNet model by plotting signed coefficients.
+    Positive coefs coincide with increasing bias and vice versa. 
+    """
+    coefs = pipeline.named_steps["elasticnet"].coefs_
+    order = np.argsort(np.abs(coefs))[::-1]
+    
+    plt.figure(figsize=(7,4))
+    colors = ["tab:red"if c < 0 else "tab:blue" for c in coefs[order]]
+    plt.bar(range(len(order)), coefs[order], color=colors)
+    plt.axhline(0, color="grey", lw=0.8)
+    plt.xticks(range(len(order)), [feature_names[i] for i in order], rotation=45, ha="right")
+    plt.ylabel("standardized coefficient")
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+    return dict(zip(feature_names, coefs))
+
+def plot_shap_importance(model, X, title="SHAP feature importance"):
+    """
+    SHAP (SHapley Additive exPlanations) gives each feature an attribution
+    for each individual prediction. Good for looking at feature importance in trees
+    where it might make arbitrary breaks over correlated variables (strairx/strairy etc...)
+    """
+    explainer = shap.TreeExplainer(model)
+    shap_vals = explainer.shap_values(X)
+    
+    plt.figure(figsize=(7,5))
+    shap.summary_plot(shap_vals, X, show=False)
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+    return shap_vals
+
+def plot_spatial_error_map(df_with_preds, target_col, pred_col):
+    """
+    Average prediction error per grid cell and plot spatially,
+    shows how the model performs at specific areas. Most important metric
+    because overall accuracy is not important when specific areas are incorrect.
+    """
+    df_with_preds = df_with_preds.copy()
+    df_with_preds["error"] = df_with_preds[pred_col] - df_with_preds[target_col]
+    error_by_cell = df_with_preds.groupby(["lat", "lon"])["error"].mean().reset_index()
+    
+    plt.figure(figsize=(8,5))
+    sc = plt.scatter(
+        error_by_cell["lon"], error_by_cell["lat"],
+        c=error_by_cell["error"], cmap="coolwarm",
+        vmin=-abs(error_by_cell["error"]).max(), vmax=abs(error_by_cell["error"]).max(),
+        s=10,
+    )
+    plt.colorbar(sc, label="mean error (pred - actual)")
+    plt.xlabel("lon")
+    plt.ylabel("lat")
+    plt.title("Spatial Error Map")
+    plt.tight_layout()
+    plt.show()
+
+def explain_bias_with_process_variables(bias_df, process_df, process_vars, target_col = BIAS_VAR):
+    """
+    Explains bias (model_sic - obs_sic) using process variables. Fits two models:
+    ElasticNet gives signed interpretable coefs and Gradient Boosting + SHAP checks nonlinear
+    patterns.
+    """
+    if target_col not in bias_df.columns:
+        raise KeyError(
+            f"{target_col} not found in bias_df -- run compute_extent_bias() first"
+        )
+    
+    merged = pd.merge(
+        bias_df[["time", target_col]],
+        process_df[["time"] + list(process_vars)],
+        on="time",
+        how="inner",
+    )
+    merged = merged.dropna(subset=[target_col] + list(process_vars))
+    
+    X = merged[process_vars]
+    y = merged[target_col]
+    
+    print("\n [bias-explainer] fitting on {len(merged)} aligned monthly observation, {len(process_vars)} features")
+    
+    print(f"\n-----ElasticNet (interpretable signed coefficients)-------")
+    en_model = select_ml_model("elastic_net")
+    train_model(en_model, X, y)
+    en_pred = en_model.predict(X)
+    evaluate_predictions(y.values, en_pred, label="ElasticNet")
+    coefs = plot_coefs(en_model, process_vars, title="What Predicts Model Bias? (ElasticNet)")
+    
+    print("\n------Gradient Boosting Tree (nonlinear)-------")
+    gbm_model = select_ml_model("gradient_boosting")
+    train_model(gbm_model, X, y)
+    gbm_pred = gbm_model.predict(X)
+    evaluate_predictions(y.values, gbm_pred, label="GradientBoosting")
+    shap_vals = plot_shap_importance(gbm_model, X, title="What Predicts Model Bias? (SHAP)")
+    
+    en_ranking = sorted(coefs, key=lambda k: abs(coefs[k]), reverse=True)
+    print("\nTop 3 features by |ElasticNet coefficient|:", en_ranking[:3])
+    mean_abs_shap = dict(zip(process_vars, np.abs(shap_vals).mean(axis=0)))
+    shap_ranking = sorted(mean_abs_shap, key=mean_abs_shap.get, reverse=True)
+    print("Top 3 features by mean |SHAP value|:      ", shap_ranking[:3])
+    agreement = len(set(en_ranking[:3]) & set(shap_ranking[:3]))
+    print(f"Agreement in top 3: {agreement}/3 features shared between the two models")
+    
+    return {
+        "elastic_net": (en_model, coefs),
+        "gbm": (gbm_model, shap_vals),
+        "data": merged,
+    }
+    
+# ============================================================
+# Main Pipeline
+# ============================================================
+
+def run_pipeline(model_name="GFDL_CM3"):
+    """
+    End to end pipeline for one climate model.
+    1. Load piControl + historical + fx
+    2. EDA
+    3. PCA/EOF
+    4. Machine Learning Process
+    5. Bias Evaluation
+    """
+    print("Loading Data......")
     data, fx = load_all_data()
     
-    pi_ds = data.get("GFDL_CM3", {}).get("piControl")
-    hist_ds = data.get("GFDL_CM3", {}).get("historical")
+    pi_ds = data.get(model_name, {}).get("piControl")
+    hist_ds = data.get(model_name, {}).get("historical")
     
-    summarize_dataset(pi_ds, "GFDL_CM3/piControl")
-    summarize_dataset(pi_ds, "GFDL_CM3/historical")
+    #summarize_dataset(pi_ds, f"{model_name}/piControl")
+    #summarize_dataset(pi_ds, f"{model_name}/historical")
     
-    print("\nRunning exploratory plots...")
-    run_eda_plots(data, fx)
+    #print("\nRunning exploratory plots...")
+    #run_eda_plots(data, fx)
     
-    # Bias Calculation: model vs observation comparison for Antarctic/southern hemisphere
+    print("\nFlattening piControl to DataFrame...")
+    df = flatten_to_dataframe(pi_ds, model_name=model_name, experiment="piControl", spatial_stride=16)
+    df = add_temporal_features(df)
     
+    numeric_cols = [c for c in MODEL_VARS.get(model_name, []) if c in df.columns]
+    print("\nCorrelation Heatmap (piControl)...")
+    plot_correlation_heatmap(df[numeric_cols])
+    
+    hist_df = flatten_to_dataframe(hist_ds, model_name=model_name, experiment="historical", spatial_stride=16)
+    hist_numeric_cols = [c for c in MODEL_VARS.get(model_name, []) if c in hist_df.columns]
+    print("\nCorrelation Heatmap (historical)...")
+    plot_correlation_heatmap(hist_df[hist_numeric_cols])
+    
+    if TARGET_VAR in pi_ds:
+        print("\nRunning PCA on target field...")
+        pca, pc_scores, valid_mask, coords = pca_on_field(pi_ds[TARGET_VAR])
+        plot_explained_variance(pca)
+        
+        for i in range(min(2, pca.n_components_)):
+            plot_eof_pattern(pca, i, valid_mask, coords, title=f"{model_name} EOF {i + 1}")
+    
+    print("\nSplitting Data...")
+    train_df, val_df, test_df = train_test_split(df)
+    
+    feature_cols = [c for c in numeric_cols if c != TARGET_VAR] + ["month_sin", "month_cos"]
+    feature_cols = [c for c in feature_cols if c in df.columns]
+    
+    train_clean = train_df.dropna(subset=feature_cols + [TARGET_VAR])
+    test_clean = test_df.dropna(subset=feature_cols + [TARGET_VAR])
+    X_train, y_train = train_clean[feature_cols], train_clean[TARGET_VAR]
+    X_test, y_test = test_clean[feature_cols], test_clean[TARGET_VAR]
+ 
+    print("\nTraining model...")
+    
+    model = select_ml_model("gradient_boosting")
+    train_model(model, X_train, y_train)
+    
+    print("\nEvaluating...")
+    y_pred = model.predict(X_test)
+    evaluate_predictions(y_test.values, y_pred, label="GradientBoosting")
+    plot_pred_vs_actual(y_test.values, y_pred)
+    plot_feature_importance(model, feature_cols)
+    
+    print("BIAS PIPELINE: comparing model output against NSIDC observations")
+        
     obs_extent = load_obs_extent()
     
     sic_south = subset_hemisphere(hist_ds[TARGET_VAR])
-    area_south = subset_hemisphere(fx["GFDL_CM3"]["areacello"])
+    area_south = subset_hemisphere(fx[model_name]["areacello"])
     
     model_extent = compute_area_weighted_extent(sic_south, area_south)
     aligned = align_model_and_obs_extent(model_extent, obs_extent)
@@ -558,7 +820,11 @@ def main():
     plot_extents(aligned)
     
     hist_south = subset_hemisphere(hist_ds)
-    process_vars = [v for v in MODEL_VARS["GFDL_CM3"] if v != TARGET_VAR]
-    process_df = flatten_to_dataframe(hist_south, "GFDL_CM3", experiment="historical")
+    process_vars = [v for v in MODEL_VARS[model_name] if v != TARGET_VAR]
+    process_df = flatten_to_dataframe(hist_south, model_name, experiment="historical", spatial_stride=16)
     process_df = process_df.groupby("time")[process_vars].mean().reset_index()
+    explain_bias_with_process_variables(aligned, process_df, process_vars)
     
+    
+if __name__ == "__main__":
+    run_pipeline("GFDL_CM3")
